@@ -215,7 +215,7 @@ def build_html(slides, slides_dir, audio_dir, output_path, title=None, template_
     elif slides:
         page_title = f"{slides[0]["title"]} — 带读背诵训练"
     else:
-        page_title = "🎙️ PPT PrePal · 英语 Pre 带读训练器"
+        page_title = "🎙️ PPT PrePal Skills · 英语 Pre 带读训练器"
     html = html.replace("{{TITLE}}", page_title)
 
     # Replace the SLIDES data
