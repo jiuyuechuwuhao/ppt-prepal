@@ -1,6 +1,6 @@
 ---
 name: recitation-trainer
-description: Build an interactive English presentation recitation trainer for Chinese speakers. Takes a PPTX file as input and produces a self-contained static HTML web app with slide previews, beat-by-beat oral scripts, TTS audio playback with sentence-level highlighting, and speed control — accessible on both desktop and mobile via GitHub Pages. Use this skill when the user mentions "带读训练器", "英语pre带读", "presentation recitation", "背诵训练", "pre练习", "英文演讲稿熟记", "国际会议pre", "博士生英语pre", "TTS带读", or wants to build a presentation practice tool for academic conferences or doctoral English presentations.
+description: Build an interactive English presentation recitation trainer for Chinese speakers. Takes a PPTX file as input and produces a self-contained static HTML web app with slide previews, beat-by-beat oral scripts, TTS audio playback with sentence-level highlighting, and speed control — accessible on both desktop and mobile via Vercel. Use this skill when the user mentions "带读训练器", "英语pre带读", "presentation recitation", "背诵训练", "pre练习", "英文演讲稿熟记", "国际会议pre", "博士生英语pre", "TTS带读", or wants to build a presentation practice tool for academic conferences or doctoral English presentations.
 ---
 
 # Recitation Trainer · 英语 Pre 带读训练器
@@ -26,7 +26,7 @@ Starting from any input (PPTX / PDF / just a topic), this skill:
    - Play/pause button per slide
    - Global speed control (0.5x–2.0x)
    - Keyboard shortcuts (Space, Arrow keys)
-6. **Deploys to GitHub Pages** (optional) — get a public URL accessible on any device
+6. **Deploys to Vercel** (optional) — get a public URL accessible on any device
    - PPT slide preview images
    - Beat-by-beat oral script table (4 columns: beat #, PPT guide, English, action)
    - Flowing full text with per-sentence highlighting synced to audio
@@ -43,7 +43,7 @@ The user needs:
 - `pdftoppm` (for PDF→PNG conversion, install via `brew install poppler` on macOS)
 - macOS with Keynote (for PPTX→PDF export)
 - Git and GitHub account (for optional deployment)
-- `gh` CLI (for GitHub Pages, install via `brew install gh`)
+- `vercel` CLI (for optional deployment, install via `npm install -g vercel`)
 
 No API keys, no paid services. Everything is free and runs locally.
 
@@ -135,7 +135,7 @@ After `check_env.py`, refer to this table when tools are missing:
 | `pdftoppm` | `brew install poppler` (macOS) / `sudo apt install poppler-utils` (Linux) |
 | Keynote (macOS missing) | Fallback A: manual PNG export, or Python-based slide rendering |
 | LibreOffice (Linux missing) | Fallback B: `python-pptx` + Pillow simple previews |
-| `gh` CLI | Skip GitHub Pages deployment — local HTML still works |
+| `gh` CLI | Skip Vercel deployment — local HTML still works |
 
 #### Fallback slide export methods
 
@@ -417,39 +417,46 @@ The AI agent should tell the user: **"The trainer is ready. Open `recitation_tra
 
 **⚠️ STOP HERE.** Do not proceed to Step 6 until the user confirms everything is correct.
 
-### Step 6: (Optional) Deploy to GitHub Pages
+### Step 6: (Optional) Deploy to Vercel
 
 Only run this step if the user explicitly asks to deploy. Ask first:
 
-> "The trainer looks good locally. Would you like me to deploy it to GitHub Pages so you can access it on your phone? This creates a public URL like `https://USERNAME.github.io/REPO-NAME/`."
+> "The trainer looks good locally. Would you like me to deploy it so you can access it on your phone? I'll use Vercel (free, no rate limits, one-command deploy)."
 
 If the user says yes:
 
 ```bash
-# Prepare deployment directory (use /tmp to avoid iCloud sync issues)
-mkdir -p /tmp/recitation-deploy
-cp -r recitation-trainer-product/* /tmp/recitation-deploy/
-cd /tmp/recitation-deploy
+# Install Vercel CLI if needed
+which vercel || npm install -g vercel
 
-# Initialize and push
-git init && git checkout -b main
-echo ".DS_Store" > .gitignore
-git add -A
-git commit -m "English recitation trainer"
+# Login (one-time, browser-based OAuth)
+vercel login
 
-# Create repo and push
-gh repo create USERNAME/REPO-NAME --public --source=. --remote=origin --push
-
-# Enable GitHub Pages
-gh api repos/USERNAME/REPO-NAME/pages -X POST \
-    -f "source[branch]=main" -f "source[path]=/"
+# Deploy — all files at once, no batching needed
+cd recitation-trainer-product/
+vercel --prod --yes
 ```
 
-**Public URL**: `https://USERNAME.github.io/REPO-NAME/recitation_trainer.html`
+**Public URL**: `https://PROJECT-NAME.vercel.app` (Vercel assigns a short alias automatically)
 
-Wait ~1-2 minutes for the first build. The page is then accessible on any device (desktop, phone, tablet).
+**Why Vercel over Vercel:**
+- No RPC rate limit — deploys 27+ files in a single command
+- No Chinese filename issues — Vercel handles Unicode paths natively
+- Instant deploy, no batching, no git push retry loops
+- Same free tier, short URL, mobile-accessible
 
-## Notes for the AI agent
+Wait ~30 seconds for the build. The page is then accessible on any device.
+
+### ⚠️ Known issues from live testing
+
+These are hard constraints discovered during testing. The AI agent should be aware of them:
+
+| Issue | Root Cause | Status |
+|-------|-----------|--------|
+| `--rate "-8%"` in shell: `%` gets swallowed by argparse | `--rate` default contains `%`, Python's `%%` in help string interferes | **Fixed** (v2.9.1): use `-8` without `%`, append `%` in code |
+| Chinese filenames break `git add` pathspec | Git encodes CJK characters as octal escapes | **Mitigated**: use `git add audio/` (directory glob), or prefer Vercel |
+| Which `python3` has `edge-tts`? | macOS has multiple Pythons; `pip3 install` target ≠ runtime | **Fixed** (v3.0.0): `SYSTEM_PYTHON` now tries `/opt/homebrew/bin/python3` first |
+| PDF font mismatch warnings clutter output | `pdftotext` and `pdftoppm` emit "Syntax Warning: Mismatch between font type" for some Chinese PDFs | **Harmless** — output is fine, just noisy. Ignore. |## Notes for the AI agent
 
 - **Edge TTS is the default TTS engine.** It's free, requires no API key, and produces natural-sounding audio. Always suggest it first.
 - **If the user has pre-existing TTS files**, skip Step 3 and use their files.
@@ -467,5 +474,5 @@ Wait ~1-2 minutes for the first build. The page is then accessible on any device
 | No `pdftoppm` | `brew install poppler` on macOS |
 | Keynote export hangs | Close Keynote first: `killall Keynote` |
 | Phone can't see images | Images too large — run `--compress` |
-| GitHub Pages 404 | Wait 2 min, check `gh api repos/.../pages --jq '.status'` |
+| Vercel 404 | Wait 2 min, check `gh api repos/.../pages --jq '.status'` |
 | Audio won't play on mobile | Ensure MP3 files are < 1MB each |
