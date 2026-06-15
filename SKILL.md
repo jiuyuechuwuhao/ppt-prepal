@@ -447,7 +447,21 @@ vercel --prod --yes
 
 Wait ~30 seconds for the build. The page is then accessible on any device.
 
-### ⚠️ Known issues from live testing
+### ⚠️ Known issues from live testing (Step 6: Deployment)
+
+**Vercel SSO Protection** — Vercel free-tier static deployments default to "Vercel Authentication" (SSO login wall). This cannot be disabled via CLI. The user must:
+
+1. Go to https://vercel.com → their project → Settings → Deployment Protection
+2. Set "Vercel Authentication" to **Disabled**
+3. Redeploy
+
+OR: use the deployment URL directly (the long hash URL like `recitation-hanyafan-XXXXX.vercel.app`) which may not have the SSO wall.
+
+**Alternative: consider not deploying.** Step 5 delivers a working local HTML. Many users may not need public deployment. The AI agent should ask whether deployment is truly needed before attempting Step 6.
+
+---
+
+### Known constraints (general pipeline)
 
 These are hard constraints discovered during testing. The AI agent should be aware of them:
 
