@@ -26,6 +26,13 @@ Starting from any input (PPTX / PDF / just a topic), this skill:
    - Play/pause button per slide
    - Global speed control (0.5x–2.0x)
    - Keyboard shortcuts (Space, Arrow keys)
+6. **Deploys to GitHub Pages** (optional) — get a public URL accessible on any device
+   - PPT slide preview images
+   - Beat-by-beat oral script table (4 columns: beat #, PPT guide, English, action)
+   - Flowing full text with per-sentence highlighting synced to audio
+   - Play/pause button per slide
+   - Global speed control (0.5x–2.0x)
+   - Keyboard shortcuts (Space, Arrow keys)
 
 
 ## Prerequisites
@@ -35,7 +42,8 @@ The user needs:
 - Python 3 with `pip3` (for Edge TTS, Pillow, python-pptx)
 - `pdftoppm` (for PDF→PNG conversion, install via `brew install poppler` on macOS)
 - macOS with Keynote (for PPTX→PDF export)
-- Git and GitHub account (for deployment)
+- Git and GitHub account (for optional deployment)
+- `gh` CLI (for GitHub Pages, install via `brew install gh`)
 
 No API keys, no paid services. Everything is free and runs locally.
 
@@ -388,14 +396,58 @@ recitation-trainer-product/
     └── Slide01.jpg ~ SlideNN.jpg
 ```
 
-### Step 5: Verify
+### Step 5: Deliver — open locally and verify
 
-Open the HTML locally to test:
+Build is complete. The deliverables are in the output folder:
+
+```
+recitation-trainer-product/
+├── recitation_trainer.html   ← Double-click to open
+├── audio/                    ← TTS MP3 files
+└── slides/                   ← Compressed JPEG images
+```
+
+Open the HTML and check:
+
 ```bash
 open recitation_trainer.html
 ```
 
-Or visit the GitHub Pages URL on mobile to confirm images and audio load correctly.
+The AI agent should tell the user: **"The trainer is ready. Open `recitation_trainer.html` and check: slide images, audio playback, beat table, sentence highlighting. If anything is off, tell me and I'll fix it."**
+
+**⚠️ STOP HERE.** Do not proceed to Step 6 until the user confirms everything is correct.
+
+### Step 6: (Optional) Deploy to GitHub Pages
+
+Only run this step if the user explicitly asks to deploy. Ask first:
+
+> "The trainer looks good locally. Would you like me to deploy it to GitHub Pages so you can access it on your phone? This creates a public URL like `https://USERNAME.github.io/REPO-NAME/`."
+
+If the user says yes:
+
+```bash
+# Prepare deployment directory (use /tmp to avoid iCloud sync issues)
+mkdir -p /tmp/recitation-deploy
+cp -r recitation-trainer-product/* /tmp/recitation-deploy/
+cd /tmp/recitation-deploy
+
+# Initialize and push
+git init && git checkout -b main
+echo ".DS_Store" > .gitignore
+git add -A
+git commit -m "English recitation trainer"
+
+# Create repo and push
+gh repo create USERNAME/REPO-NAME --public --source=. --remote=origin --push
+
+# Enable GitHub Pages
+gh api repos/USERNAME/REPO-NAME/pages -X POST \
+    -f "source[branch]=main" -f "source[path]=/"
+```
+
+**Public URL**: `https://USERNAME.github.io/REPO-NAME/recitation_trainer.html`
+
+Wait ~1-2 minutes for the first build. The page is then accessible on any device (desktop, phone, tablet).
 
 ## Notes for the AI agent
 
