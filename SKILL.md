@@ -12,7 +12,7 @@ A complete end-to-end pipeline that turns a PowerPoint presentation into an inte
 
 ## What this skill does
 
-Given a PPTX file, this skill:
+Starting from any input (PPTX / PDF / just a topic), this skill:
 
 1. **Generates a director script** (导演台本) — AI analyzes each slide and writes a beat-by-beat oral English script with flowing full text
 2. **Exports slide screenshots** — render each PPTX slide as a high-quality PNG image
@@ -31,7 +31,7 @@ Given a PPTX file, this skill:
 ## Prerequisites
 
 The user needs:
-- A PPTX file (the presentation slides)
+- A presentation topic, a PDF paper, or a PPTX file (this skill adapts to all three)
 - Python 3 with `pip3` (for Edge TTS, Pillow, python-pptx)
 - `pdftoppm` (for PDF→PNG conversion, install via `brew install poppler` on macOS)
 - macOS with Keynote (for PPTX→PDF export)
@@ -42,164 +42,145 @@ No API keys, no paid services. Everything is free and runs locally.
 
 ## Complete Workflow
 
-### Step 0: Environment check & auto-setup
 
-**IMPORTANT — Python environment**: The scripts in this skill MUST run with the system Python (`/usr/bin/python3` or `which python3`), NOT a virtualenv Python. Virtualenvs often lack `pip` and have incompatible site-packages. The AI agent should detect this:
+### Step 0: Input auto-detection & environment setup
 
-```bash
-# Check if python3 is a venv
-python3 -c "import sys; print('VENV' if sys.prefix != sys.base_prefix else 'SYSTEM')"
+**This is the routing step.** The AI agent must FIRST determine what the user has, then choose the correct branch.
 
-# If VENV, find and use system python3 instead
-SYSTEM_PYTHON=$(/usr/bin/python3 -c "print('ok')" 2>/dev/null && echo "/usr/bin/python3" || echo "python3")
-# Then run all scripts with: $SYSTEM_PYTHON scripts/check_env.py
-```
-
-**The AI agent MUST run this as the very first step:**
+Run environment check in parallel with input detection:
 
 ```bash
-$SYSTEM_PYTHON scripts/check_env.py
+# 0a. Environment check (always run first)
+SYSTEM_PYTHON=$(/usr/bin/python3 -c "print('ok')" 2>/dev/null && echo "/usr/bin/python3" || which python3)
+$SYSTEM_PYTHON SKILL_DIR/scripts/check_env.py
 ```
 
-This script:
-- Detects OS (macOS / Linux / Windows)
-- Checks all required Python packages (edge-tts, Pillow, python-pptx)
-- **Auto-installs** missing Python packages via pip
-- Checks system tools (pdftoppm, Keynote/LibreOffice, gh CLI)
-- Reports what's missing with OS-specific install commands
-- Outputs a JSON summary for the AI agent to parse
+`check_env.py` output is a JSON summary. Read it, and if Python packages are missing, re-run to confirm auto-install. If system tools (pdftoppm, Keynote) are missing, follow the fallback table below.
 
-**After running, the AI agent reads the JSON output and acts:**
+#### 0b. Input classification
+
+The AI agent scans the user's files and classifies the starting state into exactly one of these branches:
+
+| Branch | What the user has | What the agent does |
+|--------|-------------------|---------------------|
+| **A: Full PPTX** | A .pptx file with slides already designed | Go to Step 1A (extract text → generate script) |
+| **B: PDF only** | A .pdf (paper/article) | Go to Step 1B (extract text → generate script → `pdftoppm` exports slide images directly from PDF) |
+| **C: Nothing** | Just a topic or a vague idea | Go to Step 1C (AI designs slide outline → generates script → guides user to create PPTX, then proceeds) |
+
+**How the agent decides:**
+
+```
+LOOK at the user's message and any attached/files they mentioned.
+  - Contains a .pptx path? → Branch A
+  - Contains a .pdf path (no .pptx)? → Branch B
+  - No file reference, just a topic name? → Branch C
+```
+
+**⚠️ Critical routing rules:**
+
+- **Branch B (PDF):** Export slides directly with `pdftoppm`. The PDF IS the slide source. DO NOT ask the user to create a PPTX.
+- **Branch C (nothing):** The user MUST create a PPTX. The AI gives them the slide outline from the script, they build slides, then the pipeline continues with `export_slides.py`. DO NOT proceed to Step 2 without the PPTX.
+
+For Branch B, the slide export happens inside Step 2, using `pdftoppm` instead of `export_slides.py` (see Step 2 instructions).
+
+#### Legacy: Quick environment summary for the AI agent
+
+After `check_env.py`, refer to this table when tools are missing:
 
 | If missing... | Action |
 |---------------|--------|
-| Python packages | Auto-installed by the script — just re-run to verify |
-| `pdftoppm` | Tell user to install: `brew install poppler` (macOS) or `sudo apt install poppler-utils` (Linux) |
-| Keynote (macOS missing) | Use **Fallback A**: manual PNG export from PowerPoint, or Python-based slide rendering |
-| LibreOffice (Linux missing) | Use **Fallback B**: `python-pptx` + Pillow to render simple slide previews |
-| `gh` CLI | Skip GitHub Pages deployment — local HTML still works fine |
+| Python packages | Auto-installed by the script — re-run to verify |
+| `pdftoppm` | `brew install poppler` (macOS) / `sudo apt install poppler-utils` (Linux) |
+| Keynote (macOS missing) | Fallback A: manual PNG export, or Python-based slide rendering |
+| LibreOffice (Linux missing) | Fallback B: `python-pptx` + Pillow simple previews |
+| `gh` CLI | Skip GitHub Pages deployment — local HTML still works |
 
-**Fallback slide export methods (when Keynote/LibreOffice unavailable):**
+#### Fallback slide export methods
 
-Fallback A — Manual export:
-> "Keynote isn't available on this machine. Please export your PPTX slides as PNG images manually: open the PPTX in PowerPoint/Google Slides → File → Export → PNG. Save them as Slide01.png through SlideNN.png in a `slides/` folder."
+When Keynote/LibreOffice is unavailable:
 
-Fallback B — Python-based (limited quality, text-only previews):
-```python
-# Generate simple text-based previews when no real export tool exists
-from pptx import Presentation
-from PIL import Image, ImageDraw, ImageFont
+Fallback A — Manual:
+> "Please export your PPTX slides as PNG images: open in PowerPoint/Google Slides → File → Export → PNG. Save as Slide01.png through SlideNN.png in a `slides/` folder."
 
-prs = Presentation("presentation.pptx")
-for i, slide in enumerate(prs.slides):
-    img = Image.new('RGB', (1280, 720), (13, 17, 23))  # dark bg
-    draw = ImageDraw.Draw(img)
-    y = 40
-    for shape in slide.shapes:
-        if shape.has_text_frame:
-            for para in shape.text_frame.paragraphs:
-                if para.text.strip():
-                    draw.text((60, y), para.text.strip()[:80], fill=(201, 209, 217))
-                    y += 30
-                    if y > 680: break
-        if y > 680: break
-    img.save(f"slides/Slide{i+1:02d}.png")
+Fallback B — Python-based (basic quality):
+```bash
+python3 SKILL_DIR/scripts/export_slides.py --method python-pptx presentation.pptx slides/
 ```
 
-### Step 1: Generate the director script from PPTX
 
-**This is the most critical step — the AI agent writes the oral script.**
 
-The AI agent MUST:
+### Step 1: Generate the director script (导演台本)
 
-1. Run `extract_pptx_text.py` to get slide content
-2. Read the output carefully — understand the presentation's narrative
-3. For EACH slide, produce:
-   - A descriptive title
-   - A beat-by-beat table with: Beat # | PPT Guide (what to point at) | English Oral (spoken line) | Action (gesture/timing)
-   - A flowing full text (concatenated oral lines, used for TTS)
+This step produces `director_script.md` — a structured oral script that follows the JSON Schema at `assets/director_script_schema.json`.
 
-**First, extract text from the PPTX:**
+**The format is strict.** Every slide must have:
 
-```python
-from pptx import Presentation
-
-prs = Presentation("presentation.pptx")
-for i, slide in enumerate(prs.slides):
-    print(f"\n=== Slide {i+1} ===")
-    for shape in slide.shapes:
-        if shape.has_text_frame:
-            for para in shape.text_frame.paragraphs:
-                text = para.text.strip()
-                if text:
-                    print(f"  {text}")
 ```
-
-**Then, for each slide, the AI agent writes:**
-
-1. A slide section header: `## Slide N — TITLE`
-2. A beat-by-beat table with these columns: `| 拍 | PPT 指引 | 英文口述 | 动作 |`
-3. A flowing full text section: `**连贯全文**：> Full text...`
-
-**Script writing guidelines for the AI agent:**
-
-- **Simple sentences.** Break complex ideas into short, spoken English. No long subordinate clauses.
-- **Conversational tone.** Write like you're explaining to a friend, not reading an academic paper.
-- **Beat-by-beat.** Each row = one speaking beat with a physical gesture. ~3-8 beats per slide for quick slides, ~8-12 for content-heavy slides.
-- **PPT guide column.** What the speaker points to on screen ("手指向标题", "手扫过三栏").
-- **Action column.** Physical gestures and timing notes ("微笑", "看观众", "停一拍").
-- **Flowing full text.** Concatenate all oral lines into one continuous paragraph — this becomes the TTS input.
-
-**CRITICAL OUTPUT FORMAT — the AI agent MUST produce exactly this Markdown structure for every slide:**
-
-```markdown
 ## Slide N — TITLE
 
 | 拍 | PPT 指引 | 英文口述 | 动作 |
 |---|---|---|---|
-| 1 | (what to point at) | (English spoken line) | (gesture) |
-| 2 | ... | ... | ... |
+| 1 | 手指向… | One short English sentence. | gesture |
+| 2 | … | … | … |
 
 **连贯全文**：
-> (All english lines concatenated into one natural paragraph)
+> All english lines concatenated into one flowing paragraph. This becomes the TTS input.
 ```
 
-**Writing rules the AI MUST follow:**
+**The `连贯全文` paragraph is critical** — it's what Edge TTS reads and what the player highlights sentence-by-sentence. It must be a natural, conversational monologue (not a list, not bullet points).
 
-1. **Simple sentences.** Each beat = one short spoken sentence (5-15 words). No academic jargon.
-2. **Conversational tone.** "Let me show you" not "I will now demonstrate." Use contractions (it's, don't, we're).
-3. **Beat count.** Quick transition slides: 2-4 beats. Content slides: 5-8 beats. Complex slides: 8-12 beats.
-4. **PPT guide column.** What the speaker physically points to. Use Chinese: 手指向标题, 手扫过时间线, 看观众.
-5. **Action column.** Physical cues. Chinese. Can be empty for simple beats.
-6. **Full text = all english lines joined with spaces.** No extra commentary. This becomes the TTS audio input.
-7. **Every slide must have a full_text field.** Even transition slides. If a slide has no oral content, use a simple phrase like "Next, let's look at..."
-8. **Slide titles must match the actual PPT slide content.** Read them from the extract_pptx_text.py output.
+#### Branch 1A: From PPTX (user has slides)
 
-**Internal data contract (JSON Schema):**
-
-The director script must parse into this structure (used by build_trainer.py):
-
-```json
-{
-  "slides": [{
-    "num": 1,
-    "title": "COVER",
-    "beats": [{
-      "beat": 1,
-      "ppt_guide": "面向观众",
-      "english": "Hi, everyone.",
-      "action": "微笑，停一拍"
-    }],
-    "full_text": "Hi, everyone. Today — "Disclosure Day." Is it really happening? Let's find out."
-  }]
-}
+```bash
+# Step 1A: Extract slide text for the AI to read
+$SYSTEM_PYTHON SKILL_DIR/scripts/extract_pptx_text.py presentation.pptx
 ```
 
-Save the final script as `director_script.md` in the working directory.
+The agent reads this output and generates `director_script.md` directly — the slide structure already exists, so the agent writes beats that match each slide's content.
+
+#### Branch 1B: From PDF (user has a paper/article, no slides)
+
+```bash
+# Step 1B.i: Extract text from PDF
+pdftotext -layout paper.pdf source_text.txt
+```
+
+The agent reads `source_text.txt` and:
+
+1. **Designs a slide outline** — how many slides the presentation should have, what each slide covers
+2. **Generates `director_script.md`** with the same format as 1A
+3. **Proceeds directly to Step 2** — `pdftoppm` exports slide images from the PDF. No PPTX is needed for Branch B.
+
+#### Branch 1C: From nothing (just a topic)
+
+The agent asks the user for:
+
+1. The presentation topic/title
+2. Estimated duration (e.g., 10 min / 20 min)
+3. Any key points they want to cover
+
+Then the agent:
+1. **Designs a slide outline** from scratch
+2. **Generates `director_script.md`**
+3. **Prompts the user to create PPTX slides** (same as 1B)
+
+#### Schema enforcement
+
+All branches produce output that conforms to `assets/director_script_schema.json`. The key rules:
+
+- Each slide is one entry in the `slides` array
+- `full_text` = all `english` lines concatenated, natural flowing prose
+- `beats` array: minimum 1 beat per slide, each beat has `ppt_guide` (Chinese) and `english`
+- The Markdown format above is the canonical representation
+
 
 ### Step 2: Export slide screenshots
 
-**Guide the user to export slides manually** — this is the only reliable way to get pixel-perfect previews across all platforms:
+**The export method depends on which Branch we're on:**
+
+#### Branch A & C: From PPTX
+
+Guide the user to export slides from their PPTX. The manual guide covers all major tools:
 
 > "Now I need your slide images. It takes about 2 minutes:
 > 
@@ -213,13 +194,32 @@ Save the final script as `director_script.md` in the working directory.
 > 
 > After export, rename files to: slides/Slide01.png, slides/Slide02.png, ... slides/SlideNN.png"
 
-If the user wants a quick automated alternative (lower quality, loses backgrounds), run:
+Automated fallback (lower quality, loses backgrounds):
 
 ```bash
 python3 scripts/export_slides.py presentation.pptx slides/
 ```
 
 The AI agent should present the manual guide by default. Only offer the automated fallback if the user explicitly says they don't care about visual quality.
+
+#### Branch B: From PDF
+
+Use `pdftoppm` — converts each PDF page to a PNG image directly. No user intervention needed:
+
+```bash
+mkdir -p slides
+pdftoppm -png -r 200 paper.pdf slides/Slide
+
+# Rename: pdftoppm outputs Slide-1.png etc. → Slide01.png
+cd slides
+i=1
+for f in Slide-*.png; do
+    mv "$f" $(printf "Slide%02d.png" "$i")
+    ((i++))
+done
+```
+
+This produces `slides/Slide01.png` through `slides/SlideNN.png` — identical to what Step 4's `build_trainer.py` expects.
 
 
 

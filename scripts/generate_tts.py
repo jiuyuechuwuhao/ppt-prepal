@@ -54,7 +54,9 @@ def parse_full_texts(script_path):
     with open(script_path, "r", encoding="utf-8") as f:
         text = f.read()
 
-    slides_raw = re.split(r'\n(?=## Slide \d+)', text)[1:]
+    slides_raw = re.split(r'\n(?=## Slide \d+)', text)
+    if not slides_raw[0].startswith('## Slide'):
+        slides_raw = slides_raw[1:]
     slides = []
 
     for raw in slides_raw:

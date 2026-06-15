@@ -27,7 +27,9 @@ def parse_script(script_path):
     with open(script_path, "r", encoding="utf-8") as f:
         text = f.read()
 
-    slides_raw = re.split(r'\n(?=## Slide \d+)', text)[1:]  # skip header
+    slides_raw = re.split(r'\n(?=## Slide \d+)', text)
+    if not slides_raw[0].startswith('## Slide'):
+        slides_raw = slides_raw[1:]  # skip header only if first item isn't a slide
     slides = []
 
     for raw in slides_raw:
