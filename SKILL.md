@@ -145,14 +145,15 @@ The agent reads this output and generates `director_script.md` directly — the 
 PAGES=$(pdfinfo paper.pdf | grep Pages | awk '{print $2}')
 echo "PDF has $PAGES pages — script will have exactly $PAGES slides"
 
-# Step 1B.ii: Extract text from PDF
+# Step 1B.ii: Extract text from PDF WITH PAGE MARKERS
+# Use -layout to preserve layout, form feeds (^L) mark page breaks
 pdftotext -layout paper.pdf source_text.txt
 ```
 
-The agent reads `source_text.txt` and:
+The agent reads `source_text.txt` and finds page boundaries by the `` (form feed) character between pages. Each page becomes one slide.
 
-1. **MUST use the PDF page count** — the director script has exactly N slides where N = PDF pages. One slide per PDF page, in order. DO NOT summarize, consolidate, or reduce.
-2. **Generates `director_script.md`** — each slide's title comes from the page content, each slide's `full_text` is the oral delivery for that page. Same format as Branch 1A.
+1. **MUST use the PDF page count** — the director script has exactly N slides where N = PDF pages. One slide per PDF page, in strict order. Each page's visible title/header becomes the slide title. DO NOT summarize, consolidate, or reduce.
+2. **Generates `director_script.md`** — each slide's `full_text` is the oral delivery for that page's content. Format: `## Slide N — TITLE` followed by beat table and full text.
 3. **Proceeds directly to Step 2** — `pdftoppm` exports slide images (N pages → N PNGs).
 
 #### Branch 1C: From nothing (just a topic)

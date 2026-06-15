@@ -33,11 +33,11 @@ def parse_script(script_path):
     slides = []
 
     for raw in slides_raw:
-        h_match = re.match(r'## Slide (\d+) — (.+)', raw)
+        h_match = re.match(r'## Slide (\d+)(?: — (.+))?', raw)
         if not h_match:
             continue
         slide_num = int(h_match.group(1))
-        title = h_match.group(2).strip()
+        title = h_match.group(2).strip() if h_match.group(2) else f"Slide {slide_num}"
 
         # Parse beat table
         beats = []
@@ -203,6 +203,10 @@ def build_html(slides, slides_dir, audio_dir, output_path, template_path=None):
         else:
             raise FileNotFoundError("trainer_template.html not found in assets/")
 
+    # Replace the title
+    page_title = f"{slides[0]['title']} — 带读背诵训练" if slides else "Recitation Trainer — 带读背诵训练"
+    html = html.replace("{{TITLE}}", page_title)
+
     # Replace the SLIDES data
     html = re.sub(
         r'const SLIDES = \[.*?\];',
@@ -241,6 +245,7 @@ def main():
     parser.add_argument("--output", default="recitation_trainer.html", help="Output HTML file")
     parser.add_argument("--compress", action="store_true", help="Compress images to JPEG")
     parser.add_argument("--width", type=int, default=1200, help="Max image width for compression")
+    parser.add_argument("--title", help="Page title (default: from first slide)")
     parser.add_argument("--template", help="Path to trainer_template.html (auto-detected if omitted)")
 
     args = parser.parse_args()

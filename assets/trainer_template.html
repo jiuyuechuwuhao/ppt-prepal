@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Disclosure Day — 带读背诵训练</title>
+<title>{{TITLE}}</title>
 <style>
 :root {
   --bg: #0d1117;
@@ -711,7 +711,7 @@ document.addEventListener('keydown', e => {
     const delta = e.key === 'ArrowRight' ? 1 : -1;
     if (currentSlide) {
       const nextNum = currentSlide + delta;
-      if (nextNum >= 1 && nextNum <= 21) {
+      if (nextNum >= 1 && nextNum <= SLIDES.length) {
         togglePlay(nextNum);
       }
     }
